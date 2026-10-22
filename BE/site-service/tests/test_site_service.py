@@ -158,26 +158,59 @@ class SiteServiceTests(unittest.TestCase):
             "/api/audio/files/test-site_en.mp3",
         )
 
-    def test_nearby_query_uses_longitude_first_and_meter_radius(self):
+    def test_nearby_query_uses_site_coordinates_and_sorts_by_distance(self):
         collection = FakeCollection(
             [
                 {
                     "_id": "mongo-id",
                     "code": "test-site",
+                    "lat": 10.77,
+                    "lng": 106.70,
+                    "location": {
+                        "type": "Point",
+                        "coordinates": [106.71, 10.78],
+                    },
+                },
+                {
+                    "_id": "nearby-id",
+                    "code": "nearest-site",
+                    "lat": 10.7701,
+                    "lng": 106.7001,
+                    "location": {
+                        "type": "Point",
+                        "coordinates": [106.71, 10.78],
+                    },
                 }
             ]
         )
         repository = SiteRepository(collection)
 
-        result = asyncio.run(repository.find_nearby(106.70, 10.77, 500))
+        result = asyncio.run(repository.find_nearby(106.7001, 10.7701, 500))
 
-        query = collection.query
+        self.assertEqual(collection.query, {"is_active": {"$ne": False}})
         self.assertEqual(
-            query["location"]["$near"]["$geometry"]["coordinates"],
-            [106.70, 10.77],
+            [site["_id"] for site in result],
+            ["nearby-id", "mongo-id"],
         )
-        self.assertEqual(query["location"]["$near"]["$maxDistance"], 500)
-        self.assertEqual(result[0]["_id"], "mongo-id")
+
+    def test_nearby_query_falls_back_to_geojson_when_lat_lng_are_missing(self):
+        collection = FakeCollection(
+            [
+                {
+                    "_id": "geojson-site",
+                    "code": "geojson-site",
+                    "location": {
+                        "type": "Point",
+                        "coordinates": [106.70, 10.77],
+                    },
+                },
+            ]
+        )
+        repository = SiteRepository(collection)
+
+        result = asyncio.run(repository.find_nearby(106.70, 10.77, 30))
+
+        self.assertEqual([site["_id"] for site in result], ["geojson-site"])
 
     def test_sync_location_returns_a_trigger_only_inside_geofence(self):
         service = SiteService(

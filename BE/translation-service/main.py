@@ -9,6 +9,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 from business.audio_service import AudioService
 from business.tts_engine import TTSService
+from data.audio_asset_repository import AudioAssetRepository
 from data.translation_repository import TranslationRepository
 from presentation.audio_router import router
 
@@ -32,16 +33,37 @@ async def lifespan(app: FastAPI):
         os.getenv("TRANSLATION_DATABASE", "district1_translations")
     ]
     translation_collection = database.get_collection("translations")
+    await translation_collection.update_many(
+        {
+            "language": {"$exists": False},
+            "lang": {"$type": "string"},
+        },
+        [
+            {
+                "$set": {
+                    "language": {
+                        "$cond": [
+                            {"$eq": ["$lang", "zh"]},
+                            "zh-CN",
+                            "$lang",
+                        ]
+                    }
+                }
+            }
+        ],
+    )
     await translation_collection.create_index(
         [("site_code", 1), ("language", 1)],
         unique=True,
     )
+    audio_asset_collection = database.get_collection("audio_assets")
     tts_service = TTSService(cache_dir=str(AUDIO_DIR))
     app.state.audio_service = AudioService(
         TranslationRepository(translation_collection),
         tts_service,
         AUDIO_DIR,
         translation_timeout=float(os.getenv("TRANSLATION_TIMEOUT", "60")),
+        audio_asset_repository=AudioAssetRepository(audio_asset_collection),
     )
     app.state.mongo_client = mongo_client
     app.state.tts_service = tts_service

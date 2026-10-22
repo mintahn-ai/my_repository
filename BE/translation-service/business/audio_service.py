@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from data.translation_repository import TranslationRepository
+from data.audio_asset_repository import AudioAssetRepository
 from business.tts_engine import TTSService
 
 logger = logging.getLogger(__name__)
@@ -21,11 +22,13 @@ class AudioService:
         tts_service: TTSService,
         audio_dir: Path,
         translation_timeout: float = 60,
+        audio_asset_repository: AudioAssetRepository | None = None,
     ):
         self.repository = repository
         self.tts_service = tts_service
         self.audio_dir = audio_dir
         self.translation_timeout = translation_timeout
+        self.audio_asset_repository = audio_asset_repository
         self._generation_locks: dict[tuple[str, str], asyncio.Lock] = {}
 
     async def get_audio(
@@ -61,6 +64,40 @@ class AudioService:
                     return cached
                 if cached_path.is_file():
                     cached_path.unlink()
+
+        if (
+            cached
+            and cached.get("source_text") == source_description
+            and self.audio_asset_repository is not None
+        ):
+            try:
+                imported_asset = await self.audio_asset_repository.get(
+                    site_code,
+                    lang,
+                )
+            except ValueError as exc:
+                logger.exception(
+                    "Imported audio asset is invalid for site=%s lang=%s",
+                    site_code,
+                    lang,
+                )
+                raise AudioProcessingError("Imported audio asset is invalid.") from exc
+            if imported_asset is not None:
+                filename = f"imported_{site_code}_{lang}.mp3"
+                audio_path = self.audio_dir / filename
+                await asyncio.to_thread(
+                    audio_path.write_bytes,
+                    imported_asset["data"],
+                )
+                return {
+                    "site_code": site_code,
+                    "language": lang,
+                    "description": cached.get("description", source_description),
+                    "audio_filename": filename,
+                    "source_hash": source_hash,
+                    "translation_cache": "HIT",
+                    "audio_cache": "HIT",
+                }
 
         if lang == "vi":
             description = source_description

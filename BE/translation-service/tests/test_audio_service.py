@@ -1,10 +1,12 @@
 import asyncio
+import base64
 import hashlib
 import tempfile
 import unittest
 from pathlib import Path
 
 from business.audio_service import AudioService
+from data.audio_asset_repository import AudioAssetRepository
 
 
 class FakeRepository:
@@ -34,6 +36,25 @@ class FakeTranslator:
         path = self.audio_path
         path.write_bytes(b"test audio")
         return str(path), False, "test-cache-key"
+
+
+class FakeAudioAssetRepository:
+    def __init__(self, asset):
+        self.asset = asset
+
+    async def get(self, site_code, lang):
+        return self.asset
+
+
+class FakeAssetCollection:
+    def __init__(self, asset):
+        self.asset = asset
+        self.query = None
+
+    async def find_one(self, query, projection):
+        self.query = query
+        return self.asset
+
 
 class AudioServiceTests(unittest.TestCase):
     def test_translation_and_audio_are_cached_for_unchanged_source(self):
@@ -68,6 +89,59 @@ class AudioServiceTests(unittest.TestCase):
             self.assertEqual(translator.translation_calls, 1)
             self.assertEqual(translator.audio_calls, 1)
             self.assertEqual(len(repository.saved), 1)
+
+    def test_imported_audio_assets_are_used_for_matching_translations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = "A sufficiently long description for testing."
+            repository = FakeRepository()
+            repository.cached = {
+                "source_text": source,
+                "description": "A translated narration.",
+                "lang": "en",
+            }
+            translator = FakeTranslator()
+            translator.audio_path = Path(directory) / "generated.mp3"
+            service = AudioService(
+                repository,
+                translator,
+                Path(directory),
+                audio_asset_repository=FakeAudioAssetRepository(
+                    {"content_type": "audio/mpeg", "data": b"imported audio"}
+                ),
+            )
+
+            result = asyncio.run(
+                service.get_audio("test-site", source, "en")
+            )
+
+            self.assertEqual(result["description"], "A translated narration.")
+            self.assertEqual(
+                (Path(directory) / result["audio_filename"]).read_bytes(),
+                b"imported audio",
+            )
+            self.assertEqual(translator.audio_calls, 0)
+
+    def test_imported_binary_audio_asset_supports_legacy_language_code(self):
+        collection = FakeAssetCollection(
+            {
+                "content_type": "audio/mpeg",
+                "data": {
+                    "$binary": {
+                        "base64": base64.b64encode(b"audio bytes").decode("ascii"),
+                        "subType": "00",
+                    }
+                },
+            }
+        )
+        repository = AudioAssetRepository(collection)
+
+        result = asyncio.run(repository.get("test-site", "zh-CN"))
+
+        self.assertEqual(result["data"], b"audio bytes")
+        self.assertEqual(
+            collection.query["lang"]["$in"],
+            ["zh-CN", "zh"],
+        )
 
     def test_empty_cached_audio_is_removed_and_regenerated(self):
         with tempfile.TemporaryDirectory() as directory:

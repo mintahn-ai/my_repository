@@ -1,6 +1,29 @@
+import math
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorCollection
+
+
+def distance_in_meters(
+    first_lat: float,
+    first_lng: float,
+    second_lat: float,
+    second_lng: float,
+) -> float:
+    radians = math.radians
+    latitude_delta = radians(second_lat - first_lat)
+    longitude_delta = radians(second_lng - first_lng)
+    haversine = (
+        math.sin(latitude_delta / 2) ** 2
+        + math.cos(radians(first_lat))
+        * math.cos(radians(second_lat))
+        * math.sin(longitude_delta / 2) ** 2
+    )
+    haversine = min(1.0, max(0.0, haversine))
+    return 6_371_000 * 2 * math.atan2(
+        math.sqrt(haversine),
+        math.sqrt(1 - haversine),
+    )
 
 
 class SiteRepository:
@@ -47,24 +70,38 @@ class SiteRepository:
         lat: float,
         radius_m: float,
     ) -> list[dict[str, Any]]:
-        cursor = (
-            self.collection.find(
-                {
-                    "is_active": {"$ne": False},
-                    "location": {
-                        "$near": {
-                            "$geometry": {
-                                "type": "Point",
-                                "coordinates": [lng, lat],
-                            },
-                            "$maxDistance": radius_m,
-                        }
-                    }
-                }
-            )
-            .limit(50)
-        )
-        return [self._serialize(document) async for document in cursor]
+        cursor = self.collection.find({"is_active": {"$ne": False}}).limit(200)
+        nearby: list[tuple[float, dict[str, Any]]] = []
+        async for document in cursor:
+            site_lat = document.get("lat")
+            site_lng = document.get("lng")
+            if not (
+                isinstance(site_lat, (int, float))
+                and isinstance(site_lng, (int, float))
+                and -90 <= site_lat <= 90
+                and -180 <= site_lng <= 180
+            ):
+                coordinates = (document.get("location") or {}).get(
+                    "coordinates",
+                    [],
+                )
+                if len(coordinates) != 2:
+                    continue
+                site_lng, site_lat = coordinates
+                if not (
+                    isinstance(site_lat, (int, float))
+                    and isinstance(site_lng, (int, float))
+                    and -90 <= site_lat <= 90
+                    and -180 <= site_lng <= 180
+                ):
+                    continue
+
+            distance = distance_in_meters(lat, lng, site_lat, site_lng)
+            if distance <= radius_m:
+                nearby.append((distance, self._serialize(document)))
+
+        nearby.sort(key=lambda item: item[0])
+        return [site for _, site in nearby]
 
     @staticmethod
     def _serialize(document: dict[str, Any]) -> dict[str, Any]:

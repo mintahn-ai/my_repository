@@ -139,7 +139,10 @@ function formatDistance(distance) {
 export function adaptSiteRecords(records, origin) {
   return records.map((record) => {
     const template = sampleSites.find((site) => site.slug === record.code || site.name === record.name);
-    const coordinates = record.location?.coordinates;
+    const coordinates = record.lat != null && record.lng != null
+      && Number.isFinite(Number(record.lat)) && Number.isFinite(Number(record.lng))
+      ? [Number(record.lng), Number(record.lat)]
+      : record.location?.coordinates;
     const distance = origin
       ? distanceBetweenMeters(origin.latitude, origin.longitude, coordinates)
       : null;
@@ -162,7 +165,9 @@ export function adaptSiteRecords(records, origin) {
       languages: [language === 'zh-CN' ? 'ZH' : language.toUpperCase()],
       audioUrl: resolveAudioUrl(record.audio_url),
       narrationLanguage: record.translation?.language || null,
-      location: record.location,
+      location: coordinates
+        ? { type: 'Point', coordinates }
+        : record.location,
     };
   });
 }

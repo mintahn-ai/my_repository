@@ -16,7 +16,7 @@ services:
       - key: TRANSLATION_DATABASE
         value: district1_translations
       - key: SEED_SAMPLE_SITES
-        value: "true"
+        value: "false"
       - key: ADMIN_AUTH_REQUIRED
         value: "true"
       - key: ADMIN_USERNAME

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, ImageBackground, Modal, Platform, Pressable,
+  ActivityIndicator, AppState, ImageBackground, Modal, Platform, Pressable,
   ScrollView, StyleSheet, Switch, Text, TextInput, View,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -44,8 +44,15 @@ export default function App() {
   const [category, setCategory] = useState('Tất cả');
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState('');
-  const [autoPlay, setAutoPlay] = useState(true);
+  const [autoPlay, setAutoPlay] = useState(false);
   const [autoPlayRequestedSiteId, setAutoPlayRequestedSiteId] = useState(null);
+  const [appIsActive, setAppIsActive] = useState(
+    AppState.currentState == null || AppState.currentState === 'active',
+  );
+  const gpsCheckInFlight = useRef(false);
+  const lastGpsCheckAt = useRef(0);
+  const lastTriggeredSite = useRef(null);
+  const lastGpsErrorAt = useRef(0);
   const [apiLoading, setApiLoading] = useState(true);
   const [apiError, setApiError] = useState('');
   const [permission, requestPermission] = useCameraPermissions();
@@ -118,6 +125,136 @@ export default function App() {
   const showToast = (message) => {
     setToast(message);
     setTimeout(() => setToast(''), 2300);
+  };
+  const showToastRef = useRef(showToast);
+  showToastRef.current = showToast;
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      setAppIsActive(state === 'active');
+    });
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    if (!autoPlay || !appIsActive) return undefined;
+    let active = true;
+    let locationSubscription;
+
+    const checkGeofence = async (coords) => {
+      const now = Date.now();
+      if (!active || gpsCheckInFlight.current || now - lastGpsCheckAt.current < 8000) return;
+      lastGpsCheckAt.current = now;
+      gpsCheckInFlight.current = true;
+      try {
+        const result = await syncLocation({
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          radius: 50,
+          language: language.code,
+        });
+        lastGpsErrorAt.current = 0;
+        if (!active) return;
+        if (!result.trigger || !result.site) {
+          lastTriggeredSite.current = null;
+          return;
+        }
+        if (lastTriggeredSite.current === result.site.code) return;
+
+        lastTriggeredSite.current = result.site.code;
+        const [triggeredSite] = adaptSiteRecords([result.site], coords);
+        setSiteList((current) => current.map((site) => (
+          site.id === triggeredSite.id ? triggeredSite : site
+        )));
+        setSelectedSite(triggeredSite);
+        setAutoPlayRequestedSiteId(triggeredSite.id);
+        setActiveTab('explore');
+        setScreen('detail');
+        showToastRef.current(`Đang phát thuyết minh: ${triggeredSite.name}`);
+      } catch (error) {
+        if (active && Date.now() - lastGpsErrorAt.current > 30000) {
+          lastGpsErrorAt.current = Date.now();
+          showToastRef.current(`Lỗi kiểm tra vùng GPS: ${error.message}`);
+        }
+      } finally {
+        gpsCheckInFlight.current = false;
+      }
+    };
+
+    const handleLocationError = (error) => {
+      if (!active) return;
+      active = false;
+      setAutoPlay(false);
+      showToastRef.current(`Không thể tiếp tục định vị: ${error.message || 'không có quyền vị trí.'}`);
+    };
+
+    const startWatching = async () => {
+      if (Platform.OS === 'web') {
+        if (!navigator.geolocation) {
+          handleLocationError(new Error('Trình duyệt không hỗ trợ GPS.'));
+          return;
+        }
+        const watchId = navigator.geolocation.watchPosition(
+          ({ coords }) => { void checkGeofence(coords); },
+          handleLocationError,
+          { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 },
+        );
+        locationSubscription = { remove: () => navigator.geolocation.clearWatch(watchId) };
+        return;
+      }
+
+      const permissionResult = await Location.getForegroundPermissionsAsync();
+      if (!active) return;
+      if (permissionResult.status !== 'granted') {
+        handleLocationError(new Error('Bật quyền vị trí khi sử dụng ứng dụng.'));
+        return;
+      }
+      const subscription = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.High,
+          distanceInterval: 10,
+          timeInterval: 8000,
+        },
+        ({ coords }) => { void checkGeofence(coords); },
+      );
+      if (!active) subscription.remove();
+      else locationSubscription = subscription;
+    };
+
+    void startWatching().catch((error) => handleLocationError(error));
+    return () => {
+      active = false;
+      locationSubscription?.remove();
+    };
+  }, [appIsActive, autoPlay, language.code]);
+
+  const setAutomaticPlayback = async (enabled) => {
+    if (!enabled) {
+      setAutoPlay(false);
+      return;
+    }
+    if (Platform.OS === 'web') {
+      if (!navigator.geolocation) {
+        showToast('Trình duyệt này không hỗ trợ định vị GPS.');
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        () => setAutoPlay(true),
+        (error) => showToast(`Không thể cấp quyền định vị: ${error.message}`),
+        { enableHighAccuracy: true, timeout: 10000 },
+      );
+      return;
+    }
+    try {
+      const permissionResult = await Location.requestForegroundPermissionsAsync();
+      if (permissionResult.status !== 'granted') {
+        showToast('Cần cho phép vị trí khi dùng ứng dụng để tự động phát.');
+        return;
+      }
+      setAutoPlay(true);
+    } catch (error) {
+      showToast(`Không thể yêu cầu quyền vị trí: ${error.message}`);
+    }
   };
 
   const toggleSaved = (site) => {
@@ -315,7 +452,7 @@ export default function App() {
               language={language}
               autoPlay={autoPlay}
               savedCount={savedIds.length}
-              setAutoPlay={setAutoPlay}
+              setAutoPlay={setAutomaticPlayback}
               onLanguage={() => setLanguagePicker(true)}
               onScan={() => setScreen('scanner')}
               onNotify={showToast}
@@ -602,7 +739,7 @@ function ProfileScreen({ language, autoPlay, savedCount, setAutoPlay, onLanguage
     <Text style={styles.profileGroupLabel}>TRẢI NGHIỆM</Text>
     <View style={styles.settingsGroup}>
       <ProfileRow icon={Languages} title="Ngôn ngữ thuyết minh" subtitle={language.name} onPress={onLanguage} />
-      <View style={styles.profileSettingRow}><View style={styles.profileRowIcon}><Headphones size={17} color="#4C9C7E" /></View><View style={styles.profileRowCopy}><Text style={styles.profileRowTitle}>Tự động phát gần di tích</Text><Text style={styles.profileRowSub}>Phát khi bạn đến gần điểm tham quan</Text></View><Switch value={autoPlay} onValueChange={setAutoPlay} trackColor={{ false: '#ddd8d2', true: '#F04D2E' }} thumbColor="#fff" /></View>
+      <View style={styles.profileSettingRow}><View style={styles.profileRowIcon}><Headphones size={17} color="#4C9C7E" /></View><View style={styles.profileRowCopy}><Text style={styles.profileRowTitle}>Tự động phát gần di tích</Text><Text style={styles.profileRowSub}>Dùng GPS khi mở ứng dụng để tự phát trong bán kính 50 m</Text></View><Switch value={autoPlay} onValueChange={setAutoPlay} trackColor={{ false: '#ddd8d2', true: '#F04D2E' }} thumbColor="#fff" /></View>
       <ProfileRow icon={QrCode} title="Quét mã QR" subtitle="Nghe thuyết minh tại chỗ" onPress={onScan} last />
     </View>
     <Text style={styles.profileGroupLabel}>THÔNG TIN</Text>

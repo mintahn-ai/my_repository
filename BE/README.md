@@ -93,7 +93,9 @@ Các route admin (`/admin`, `/activity`, CRUD và `/listeners/active`) yêu cầ
 
 Có thể đặt `PUBLIC_LISTENER_ONLY=true` để chủ động tắt các route admin; mặc định là `false`. Khi public dashboard có đăng nhập, giữ biến này ở `false` và bắt buộc `ADMIN_AUTH_REQUIRED=true`.
 
-Ngôn ngữ public hiện được giới hạn ở `vi`, `en`, `ja`, `zh-CN`. Engine của nhóm có thêm ngôn ngữ giọng đọc; cần đồng bộ whitelist API trước khi mở các ngôn ngữ đó. App gửi vị trí GPS tới `sync-location` khi người dùng chọn “Tìm quanh đây”; nếu chế độ tự động bật và nằm trong geofence thì chuyển tới trang điểm di tích và phát audio. Đây chưa phải theo dõi vị trí chạy nền liên tục.
+Ngôn ngữ public hiện được giới hạn ở `vi`, `en`, `ja`, `zh-CN`. Engine của nhóm có thêm ngôn ngữ giọng đọc; cần đồng bộ whitelist API trước khi mở các ngôn ngữ đó. Trong app di động, người dùng bật **Tự động phát gần di tích** và cấp quyền vị trí để app kiểm tra vùng geofence khi đang mở; khi đi vào vùng 50 m, app mở nội dung di tích và phát audio một lần. Tắt chế độ này sẽ dừng theo dõi. Đây không phải theo dõi vị trí chạy nền.
+
+Translation service tương thích dữ liệu nhập từ bộ export của dự án nếu collection `translations` dùng trường `lang`, `source_text`, còn collection `audio_assets` có dữ liệu BSON Binary trong `data`. Khi khởi động, service chuẩn hóa `lang` thành `language` (`zh` thành `zh-CN`) để tạo unique index; audio đã nhập được dùng khi văn bản nguồn khớp với nội dung di tích.
 
 Web admin dùng endpoint catalog quản trị và có thể thêm, sửa, xóa di tích lưu trực tiếp trong MongoDB. App di động tiếp tục chỉ đọc danh sách di tích đang hoạt động và gọi narration/geofence.
 
@@ -104,9 +106,9 @@ Nếu Edge TTS tạm giới hạn yêu cầu, web vẫn tải nội dung gốc v
 ## Ranh giới dữ liệu và GPS
 
 - Chỉ `site-service` đọc/ghi hồ sơ, địa chỉ và tọa độ di tích.
-- Chỉ `translation-service` đọc/ghi bản dịch và metadata audio. Service này nhận mô tả nguồn qua HTTP; không truy vấn database di tích.
-- MongoDB server có thể dùng chung cho đồ án, nhưng dữ liệu nằm trong hai database riêng. Không chia sẻ repository giữa các service.
-- Tọa độ lưu dưới GeoJSON Point theo thứ tự `[longitude, latitude]`; site service tạo index `2dsphere` và dùng `$near` với `$maxDistance` tính bằng mét.
+- Chỉ `translation-service` đọc/ghi bản dịch và metadata audio, đồng thời đọc collection `audio_assets` trong `TRANSLATION_DATABASE` để phục vụ audio đã nhập. Service này nhận mô tả nguồn qua HTTP; không truy vấn database di tích.
+- Hai service dùng collection riêng; có thể đặt `SITE_DATABASE` và `TRANSLATION_DATABASE` ở hai database riêng hoặc cùng một database nếu MongoDB hiện có cấu trúc như vậy. Không chia sẻ repository giữa các service.
+- Tọa độ di tích mới lưu đồng thời ở `lat`/`lng` và GeoJSON Point `[longitude, latitude]`. Tra cứu vùng gần ưu tiên `lat`/`lng`, rồi mới dùng GeoJSON nếu thiếu, để dữ liệu export có hai trường tọa độ không khớp vẫn kích hoạt đúng vị trí hiển thị. Kết quả được sắp xếp theo khoảng cách và giới hạn ở 200 di tích.
 - HTTP nội bộ có timeout; lỗi từ service phụ thuộc được trả thành HTTP error thay vì âm thầm trả dữ liệu thành công giả.
 
 ## Chạy bằng Docker Compose

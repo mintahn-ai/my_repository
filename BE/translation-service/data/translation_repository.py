@@ -8,8 +8,15 @@ class TranslationRepository:
         self.collection = collection
 
     async def get(self, site_code: str, lang: str) -> dict[str, Any] | None:
+        legacy_lang = "zh" if lang == "zh-CN" else lang
         return await self.collection.find_one(
-            {"site_code": site_code, "language": lang},
+            {
+                "site_code": site_code,
+                "$or": [
+                    {"language": lang},
+                    {"lang": legacy_lang},
+                ],
+            },
             {"_id": 0},
         )
 

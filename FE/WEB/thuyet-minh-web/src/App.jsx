@@ -7,7 +7,9 @@ import {
   ShieldCheck, Sparkles, Trash2, X,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import 'leaflet/dist/leaflet.css';
 import { initialSites } from './data.js';
+import SiteMap from './components/SiteMap.jsx';
 import {
   fetchActiveListeners,
   createSite,
@@ -380,7 +382,7 @@ function AdminDashboard({ account, onAccountUpdate, onLogout, authRequired }) {
           {activePage === 'places' && <PlacesPage sites={filteredSites} totalSites={sites.length} allSites={sites} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onEdit={openEdit} onDelete={removeSite} />}
           {activePage === 'narrations' && <NarrationsPage notify={notify} />}
           {activePage === 'languages' && <LanguagesPage sites={sites} />}
-          {activePage === 'map' && <MapPage notify={notify} siteCount={sites.length} />}
+          {activePage === 'map' && <MapPage notify={notify} sites={sites} />}
           {activePage === 'settings' && <SettingsPage account={account} onAccountUpdate={onAccountUpdate} notify={notify} authRequired={authRequired} />}
         </div>
         <footer className="footer"><span>© 2026 Di Tích Q1</span><span>Hệ thống thuyết minh di tích lịch sử Quận 1</span><span className="system-status"><i /> {backendStatus === 'connected' ? 'Đã kết nối Backend' : backendStatus === 'offline' ? 'Đang dùng dữ liệu mẫu · Backend chưa kết nối' : 'Đang kết nối Backend…'}</span></footer>
@@ -967,8 +969,86 @@ function LanguagesPage({ sites }) {
   </div>;
 }
 
-function MapPage({ notify, siteCount }) {
-  return <div className="map-page"><section className="panel map-large-panel"><div className="panel-heading"><div><h3>Vị trí các điểm di tích</h3><p>Quận 1, Thành phố Hồ Chí Minh · {siteCount} điểm mẫu</p></div><button className="button button-secondary small-button" onClick={() => notify('Đang làm mới vị trí GPS.')}><Compass size={15} /> Làm mới vị trí</button></div><div className="large-map map-preview"><div className="map-block block-a" /><div className="map-block block-b" /><div className="map-block block-c" /><div className="map-block block-d" /><div className="map-block block-e" /><div className="map-road road-one" /><div className="map-road road-two" /><div className="map-road road-three" /><div className="map-water" /><span className="map-label label-dong-khoi">Đ. Đồng Khởi</span><span className="map-label label-le-loi">Đ. Lê Lợi</span><span className="map-label label-nam-ky">Nam Kỳ Khởi Nghĩa</span><div className="map-marker marker-one"><MapPin size={16} fill="currentColor" /></div><div className="map-marker marker-two"><MapPin size={16} fill="currentColor" /></div><div className="map-marker marker-three"><MapPin size={16} fill="currentColor" /></div><div className="map-marker marker-four"><MapPin size={16} fill="currentColor" /></div><div className="map-legend"><i /> Đang hoạt động <i className="legend-warn" /> Bản nháp</div><button className="map-zoom" onClick={() => notify('Bản đồ đã được phóng to.')}><Plus size={17} /><span />−</button></div></section><section className="gps-side"><div className="panel gps-status-panel"><div className="gps-status-head"><span className="gps-icon"><ShieldCheck size={19} /></span><span className="gps-online"><i /> HOẠT ĐỘNG</span></div><h3>GPS & Geofence</h3><p>Thiết lập bán kính để ứng dụng tự động phát thuyết minh khi khách đến gần di tích.</p><div className="radius-setting"><div><span>Bán kính kích hoạt</span><strong>50 <small>mét</small></strong></div><input type="range" min="20" max="200" defaultValue="50" /><div className="range-labels"><span>20m</span><span>200m</span></div></div><button className="button button-primary full-button" onClick={() => notify('Đã lưu cấu hình GPS.')}>Lưu cấu hình</button></div><div className="panel gps-help-panel"><div className="gps-help-icon"><CircleHelp size={17} /></div><div><strong>Về vùng kích hoạt</strong><p>Bán kính đề xuất từ 30–80m để đảm bảo trải nghiệm phát tự động chính xác trong khu vực trung tâm.</p></div></div></section></div>;
+function MapPage({ notify, sites }) {
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [gpsWatching, setGpsWatching] = useState(false);
+  const watchId = useRef(null);
+  const mappedSites = useMemo(() => sites.filter((site) => {
+    const lat = Number(site.lat ?? site.location?.coordinates?.[1]);
+    const lng = Number(site.lng ?? site.location?.coordinates?.[0]);
+    return Number.isFinite(lat) && lat >= -90 && lat <= 90
+      && Number.isFinite(lng) && lng >= -180 && lng <= 180;
+  }).map((site) => ({
+    ...site,
+    lat: Number(site.lat ?? site.location.coordinates[1]),
+    lng: Number(site.lng ?? site.location.coordinates[0]),
+  })), [sites]);
+
+  useEffect(() => () => {
+    if (watchId.current !== null) navigator.geolocation?.clearWatch(watchId.current);
+  }, []);
+
+  const locateUser = () => {
+    if (!navigator.geolocation) {
+      notify('Trình duyệt này không hỗ trợ định vị GPS.');
+      return;
+    }
+    if (watchId.current !== null) {
+      navigator.geolocation.clearWatch(watchId.current);
+      watchId.current = null;
+      setGpsWatching(false);
+      return;
+    }
+    watchId.current = navigator.geolocation.watchPosition(
+      ({ coords }) => setCurrentLocation([coords.latitude, coords.longitude]),
+      (error) => {
+        if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current);
+        watchId.current = null;
+        setGpsWatching(false);
+        notify(`Không lấy được vị trí GPS: ${error.message}`);
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
+    );
+    setGpsWatching(true);
+  };
+
+  return <div className="map-page">
+    <section className="panel map-large-panel">
+      <div className="panel-heading">
+        <div>
+          <h3>Vị trí các điểm di tích</h3>
+          <p>Quận 1, Thành phố Hồ Chí Minh · {mappedSites.length} di tích từ dữ liệu</p>
+        </div>
+        <button className="button button-secondary small-button" onClick={locateUser}>
+          <Compass size={15} /> {gpsWatching ? 'Dừng định vị' : 'Bật định vị'}
+        </button>
+      </div>
+      {mappedSites.length
+        ? <SiteMap sites={mappedSites} currentLocation={currentLocation} />
+        : <p className="map-empty">Chưa có di tích với tọa độ hợp lệ trong Backend.</p>}
+    </section>
+    <section className="gps-side">
+      <div className="panel gps-status-panel">
+        <div className="gps-status-head">
+          <span className="gps-icon"><ShieldCheck size={19} /></span>
+          <span className="gps-online"><i /> {gpsWatching ? 'ĐANG THEO DÕI' : 'GPS TẮT'}</span>
+        </div>
+        <h3>GPS & Geofence</h3>
+        <p>{currentLocation
+          ? `Vị trí hiện tại: ${currentLocation[0].toFixed(5)}, ${currentLocation[1].toFixed(5)}.`
+          : 'Bật định vị để hiển thị vị trí hiện tại trên bản đồ. GPS chỉ được theo dõi khi bạn bật nút.'}</p>
+        <div className="radius-setting">
+          <div><span>Bán kính kích hoạt</span><strong>50 <small>mét</small></strong></div>
+          <input type="range" min="20" max="200" defaultValue="50" />
+          <div className="range-labels"><span>20m</span><span>200m</span></div>
+        </div>
+      </div>
+      <div className="panel gps-help-panel">
+        <div className="gps-help-icon"><CircleHelp size={17} /></div>
+        <div><strong>Bản đồ dữ liệu thật</strong><p>Chọn một điểm đánh dấu để xem tên, địa chỉ và tọa độ. Bản đồ nền dùng OpenStreetMap.</p></div>
+      </div>
+    </section>
+  </div>;
 }
 
 function SettingsPage({ account, onAccountUpdate, notify, authRequired }) {

@@ -318,6 +318,10 @@ table { width: 100%; border-collapse: collapse; white-space: nowrap; }
 .map-page { display: grid; grid-template-columns: minmax(0,1fr) 270px; gap: 15px; }
 .map-large-panel { padding: 17px; }
 .large-map { height: min(58vh,500px); min-height: 330px; margin-top: 15px; }
+.leaflet-map { width: 100%; overflow: hidden; border: 1px solid #e9ece9; border-radius: 8px; }
+.leaflet-map .leaflet-popup-content-wrapper { border-radius: 8px; }
+.leaflet-map .leaflet-popup-content { color: #535b66; font: 12px 'DM Sans',sans-serif; line-height: 1.6; }
+.map-empty { display: grid; min-height: 330px; place-items: center; color: #8e96a2; font-size: 12px; }
 .large-map .map-block { border-radius: 8px; }
 .large-map .map-marker { width: 31px; height: 31px; }
 .large-map .marker-one { top: 35%; left: 29%; }
