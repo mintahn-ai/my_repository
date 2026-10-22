@@ -1,12 +1,58 @@
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
+from hashlib import pbkdf2_hmac
 
 import jwt
 from fastapi import Header, HTTPException, Request, status
 from jwt import InvalidTokenError
 
 TOKEN_LIFETIME = timedelta(hours=8)
+PASSWORD_HASH_ITERATIONS = 310_000
+
+
+def hash_admin_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    digest = pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        PASSWORD_HASH_ITERATIONS,
+    )
+    return f"{salt.hex()}:{digest.hex()}"
+
+
+def verify_admin_password(password: str, password_hash: str) -> bool:
+    try:
+        salt_hex, digest_hex = password_hash.split(":", maxsplit=1)
+        salt = bytes.fromhex(salt_hex)
+        expected_digest = bytes.fromhex(digest_hex)
+    except (ValueError, TypeError):
+        return False
+    actual_digest = pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        PASSWORD_HASH_ITERATIONS,
+    )
+    return secrets.compare_digest(actual_digest, expected_digest)
+
+
+async def get_admin_credentials(request: Request) -> dict:
+    collection = getattr(request.app.state, "admin_credentials_collection", None)
+    if collection is not None:
+        credentials = await collection.find_one({"_id": "admin"})
+        if credentials is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Admin credentials are not initialized.",
+            )
+        return credentials
+    return {
+        "username": request.app.state.admin_username,
+        "password": request.app.state.admin_password,
+        "token_version": getattr(request.app.state, "admin_token_version", 0),
+    }
 
 
 def configure_admin_auth(app) -> None:
@@ -53,11 +99,15 @@ def configure_admin_auth(app) -> None:
     app.state.public_listener_only = public_listener_only == "true"
 
 
-def create_admin_token(username: str, secret: str) -> tuple[str, int]:
+def create_admin_token(
+    username: str,
+    secret: str,
+    token_version: int = 0,
+) -> tuple[str, int]:
     now = datetime.now(timezone.utc)
     expires_at = now + TOKEN_LIFETIME
     token = jwt.encode(
-        {"sub": username, "iat": now, "exp": expires_at},
+        {"sub": username, "iat": now, "exp": expires_at, "ver": token_version},
         secret,
         algorithm="HS256",
     )
@@ -99,9 +149,13 @@ async def require_admin_api(
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
 
-    if not secrets.compare_digest(
-        str(payload.get("sub", "")),
-        request.app.state.admin_username,
+    credentials = await get_admin_credentials(request)
+    if (
+        not secrets.compare_digest(
+            str(payload.get("sub", "")),
+            credentials["username"],
+        )
+        or payload.get("ver", 0) != credentials.get("token_version", 0)
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -20,6 +20,7 @@ import {
   apiBaseUrl,
   loginAdmin,
   updateSite,
+  updateAdminCredentials,
 } from './services/api.js';
 
 const navSections = [
@@ -125,6 +126,10 @@ function AdminApp() {
   };
 
   const updateAccount = (updates) => {
+    if (adminAuthRequired) {
+      setAccount({ displayName: updates.username, username: updates.username });
+      return;
+    }
     if (updates.currentPassword !== account.password) {
       throw new Error('Mật khẩu hiện tại không chính xác.');
     }
@@ -973,19 +978,66 @@ function SettingsPage({ account, onAccountUpdate, notify, authRequired }) {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   if (authRequired) {
+    const updateCredentials = async (event) => {
+      event.preventDefault();
+      setError('');
+      if (username.trim().length < 3) {
+        setError('Tên đăng nhập cần có ít nhất 3 ký tự.');
+        return;
+      }
+      if (newPassword.length < 12) {
+        setError('Mật khẩu mới cần có ít nhất 12 ký tự.');
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        setError('Mật khẩu mới và xác nhận mật khẩu không khớp.');
+        return;
+      }
+
+      setSaving(true);
+      try {
+        const session = await updateAdminCredentials(
+          currentPassword,
+          username.trim(),
+          newPassword,
+        );
+        onAccountUpdate({ username: session.username });
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        notify('Đã đổi thông tin đăng nhập.');
+      } catch (updateError) {
+        setError(updateError.message || 'Không thể cập nhật thông tin đăng nhập.');
+      } finally {
+        setSaving(false);
+      }
+    };
+
     return (
       <section className="panel settings-panel">
         <div className="panel-heading">
-          <div><h3>Thông tin tài khoản</h3><p>Tài khoản quản trị được xác thực an toàn ở Backend.</p></div>
+          <div><h3>Thông tin tài khoản</h3><p>Đổi tài khoản quản trị. Thay đổi được lưu an toàn trên Backend.</p></div>
         </div>
-        <div className="settings-form">
+        <form className="settings-form" onSubmit={updateCredentials}>
           <label>Tên đăng nhập
-            <input value={account.username} readOnly />
+            <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required />
           </label>
-          <p className="settings-security-note">Để đổi thông tin đăng nhập, hãy cập nhật biến môi trường ADMIN_USERNAME hoặc ADMIN_PASSWORD trong Render. Mật khẩu không được lưu trong trình duyệt.</p>
-        </div>
+          <label>Mật khẩu hiện tại <em>*</em>
+            <input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" required />
+          </label>
+          <label>Mật khẩu mới <em>*</em>
+            <input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" minLength={12} required />
+          </label>
+          <label>Xác nhận mật khẩu mới <em>*</em>
+            <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" minLength={12} required />
+          </label>
+          {error && <div className="settings-error" role="alert">{error}</div>}
+          <button className="button button-primary settings-save" type="submit" disabled={saving}>{saving ? 'Đang lưu…' : 'Lưu thông tin đăng nhập'}</button>
+          <p className="settings-security-note">Mật khẩu được lưu dưới dạng mã băm trong cơ sở dữ liệu, không lưu trong trình duyệt.</p>
+        </form>
       </section>
     );
   }

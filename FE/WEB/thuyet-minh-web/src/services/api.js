@@ -49,6 +49,23 @@ export async function loginAdmin(username, password) {
   return session;
 }
 
+export async function updateAdminCredentials(currentPassword, username, newPassword) {
+  const session = await requestSite('/api/auth/credentials', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      current_password: currentPassword,
+      username,
+      new_password: newPassword,
+    }),
+  }, true);
+  if (typeof session.access_token !== 'string' || !session.access_token) {
+    throw new Error('Backend trả về phiên đăng nhập không hợp lệ.');
+  }
+  sessionStorage.setItem(adminTokenStorageKey, session.access_token);
+  return session;
+}
+
 export async function fetchSites() {
   let response;
   try {

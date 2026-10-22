@@ -86,9 +86,10 @@ FE chỉ cấu hình base URL của gateway, ví dụ `http://localhost:8000`. K
 - `GET /api/audio/files/{filename}` — audio do gateway phục vụ từ volume dùng chung.
 - `GET /api/audio/packs/{lang}` — manifest audio theo ngôn ngữ.
 - `POST /api/auth/login` — xác thực tài khoản quản trị và cấp bearer token có thời hạn.
+- `PUT /api/auth/credentials` — đổi username/mật khẩu quản trị bằng phiên bearer token hiện tại.
 - `GET /health` — health check gateway.
 
-Các route admin (`/admin`, `/activity`, CRUD và `/listeners/active`) yêu cầu bearer token khi cấu hình `ADMIN_AUTH_REQUIRED=true`. Gateway xác thực token ký HS256; token có thời hạn 8 giờ và endpoint đăng nhập khóa tạm username sau 10 lần sai trong 15 phút. Đặt `ADMIN_USERNAME`, `ADMIN_PASSWORD` (tối thiểu 12 ký tự) và `ADMIN_TOKEN_SECRET` ở môi trường triển khai, không commit chúng. `ADMIN_TOKEN_SECRET` cần tối thiểu 32 byte. Chế độ local giữ tương thích cũ nếu không bật xác thực; bật `ADMIN_AUTH_REQUIRED=true` để kiểm tra đăng nhập thật tại local.
+Các route admin (`/admin`, `/activity`, CRUD và `/listeners/active`) yêu cầu bearer token khi cấu hình `ADMIN_AUTH_REQUIRED=true`. Gateway xác thực token ký HS256; token có thời hạn 8 giờ và endpoint đăng nhập khóa tạm username sau 10 lần sai trong 15 phút. Đặt `ADMIN_USERNAME`, `ADMIN_PASSWORD` (tối thiểu 12 ký tự) và `ADMIN_TOKEN_SECRET` ở môi trường triển khai, không commit chúng. `ADMIN_TOKEN_SECRET` cần tối thiểu 32 byte. Khi khởi động lần đầu, tài khoản được khởi tạo trong collection `admin_settings` của database `SITE_DATABASE`; mật khẩu được lưu dạng PBKDF2 hash. Sau đó admin có thể đổi username/mật khẩu từ mục **Cài đặt hệ thống**; thao tác này yêu cầu mật khẩu hiện tại và làm mất hiệu lực các phiên đăng nhập cũ. Chế độ local giữ tương thích cũ nếu không bật xác thực; bật `ADMIN_AUTH_REQUIRED=true` để kiểm tra đăng nhập thật tại local.
 
 Có thể đặt `PUBLIC_LISTENER_ONLY=true` để chủ động tắt các route admin; mặc định là `false`. Khi public dashboard có đăng nhập, giữ biến này ở `false` và bắt buộc `ADMIN_AUTH_REQUIRED=true`.
 
