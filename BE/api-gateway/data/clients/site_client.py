@@ -24,6 +24,16 @@ class SiteClient:
     async def get_recent_activity(self) -> list[dict]:
         return await self._request("GET", "/internal/sites/activity")
 
+    async def get_geofence_settings(self) -> dict:
+        return await self._request("GET", "/internal/sites/geofence-settings")
+
+    async def update_geofence_settings(self, radius_m: int) -> dict:
+        return await self._request(
+            "PUT",
+            "/internal/sites/geofence-settings",
+            json={"radius_m": radius_m},
+        )
+
     async def create_site(self, site_data: dict) -> dict:
         return await self._request(
             "POST",

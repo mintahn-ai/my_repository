@@ -158,6 +158,35 @@ class SiteClientTests(unittest.TestCase):
         )
         self.assertEqual(requests[0].url.params["radius_m"], "500")
 
+    def test_geofence_settings_requests_are_forwarded_to_site_service(self):
+        requests = []
+
+        def handler(request):
+            requests.append(request)
+            return httpx.Response(200, json={"radius_m": 75})
+
+        async def run_test():
+            async with httpx.AsyncClient(
+                transport=httpx.MockTransport(handler)
+            ) as client:
+                site_client = SiteClient(client, "http://site-service:8000")
+                current = await site_client.get_geofence_settings()
+                updated = await site_client.update_geofence_settings(75)
+                return current, updated
+
+        current, updated = asyncio.run(run_test())
+
+        self.assertEqual(current, {"radius_m": 75})
+        self.assertEqual(updated, {"radius_m": 75})
+        self.assertEqual(
+            [(request.method, request.url.path) for request in requests],
+            [
+                ("GET", "/internal/sites/geofence-settings"),
+                ("PUT", "/internal/sites/geofence-settings"),
+            ],
+        )
+        self.assertEqual(json.loads(requests[1].read()), {"radius_m": 75})
+
     def test_geofence_request_is_forwarded_to_site_service(self):
         requests = []
 

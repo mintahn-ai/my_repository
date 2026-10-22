@@ -9,6 +9,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from business.site_service import SiteService
 from business.listener_service import ListenerService
 from data.activity_repository import ActivityRepository
+from data.geofence_settings_repository import GeofenceSettingsRepository
 from data.listener_repository import ListenerRepository
 from data.site_repository import SiteRepository
 from integrations.translation_client import TranslationClient
@@ -27,6 +28,7 @@ async def lifespan(app: FastAPI):
     site_collection = database.get_collection("sites")
     listener_collection = database.get_collection("listener_sessions")
     activity_collection = database.get_collection("site_activity")
+    geofence_settings_collection = database.get_collection("geofence_settings")
     await site_collection.create_index("code", unique=True)
     await site_collection.create_index([("location", "2dsphere")])
     await listener_collection.create_index("session_id", unique=True)
@@ -61,6 +63,9 @@ async def lifespan(app: FastAPI):
             ),
         ),
         ActivityRepository(activity_collection),
+    )
+    app.state.geofence_settings_repository = GeofenceSettingsRepository(
+        geofence_settings_collection
     )
     app.state.listener_service = ListenerService(
         ListenerRepository(listener_collection)

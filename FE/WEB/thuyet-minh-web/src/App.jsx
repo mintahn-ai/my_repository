@@ -15,6 +15,7 @@ import {
   createSite,
   deleteSite,
   fetchAdminSites,
+  fetchGeofenceSettings,
   fetchRecentActivity,
   fetchSiteNarration,
   heartbeatListener,
@@ -23,6 +24,7 @@ import {
   loginAdmin,
   updateSite,
   updateAdminCredentials,
+  updateGeofenceSettings,
 } from './services/api.js';
 
 const navSections = [
@@ -972,6 +974,10 @@ function LanguagesPage({ sites }) {
 function MapPage({ notify, sites }) {
   const [currentLocation, setCurrentLocation] = useState(null);
   const [gpsWatching, setGpsWatching] = useState(false);
+  const [radiusM, setRadiusM] = useState(50);
+  const [draftRadiusM, setDraftRadiusM] = useState(50);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settingsSaving, setSettingsSaving] = useState(false);
   const watchId = useRef(null);
   const mappedSites = useMemo(() => sites.filter((site) => {
     const lat = Number(site.lat ?? site.location?.coordinates?.[1]);
@@ -987,6 +993,37 @@ function MapPage({ notify, sites }) {
   useEffect(() => () => {
     if (watchId.current !== null) navigator.geolocation?.clearWatch(watchId.current);
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetchGeofenceSettings()
+      .then(({ radius_m: savedRadius }) => {
+        if (!active) return;
+        setRadiusM(savedRadius);
+        setDraftRadiusM(savedRadius);
+      })
+      .catch((error) => {
+        if (active) notify(`Không tải được bán kính kích hoạt: ${error.message}`);
+      })
+      .finally(() => {
+        if (active) setSettingsLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  const saveRadius = async () => {
+    setSettingsSaving(true);
+    try {
+      const { radius_m: savedRadius } = await updateGeofenceSettings(draftRadiusM);
+      setRadiusM(savedRadius);
+      setDraftRadiusM(savedRadius);
+      notify(`Đã lưu bán kính kích hoạt ${savedRadius} m.`);
+    } catch (error) {
+      notify(`Không lưu được bán kính kích hoạt: ${error.message}`);
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
 
   const locateUser = () => {
     if (!navigator.geolocation) {
@@ -1038,9 +1075,25 @@ function MapPage({ notify, sites }) {
           ? `Vị trí hiện tại: ${currentLocation[0].toFixed(5)}, ${currentLocation[1].toFixed(5)}.`
           : 'Bật định vị để hiển thị vị trí hiện tại trên bản đồ. GPS chỉ được theo dõi khi bạn bật nút.'}</p>
         <div className="radius-setting">
-          <div><span>Bán kính kích hoạt</span><strong>50 <small>mét</small></strong></div>
-          <input type="range" min="20" max="200" defaultValue="50" />
+          <div><span>Bán kính kích hoạt</span><strong>{draftRadiusM} <small>mét</small></strong></div>
+          <input
+            type="range"
+            min="20"
+            max="200"
+            step="5"
+            value={draftRadiusM}
+            disabled={settingsLoading || settingsSaving}
+            onChange={(event) => setDraftRadiusM(Number(event.target.value))}
+            aria-label="Bán kính kích hoạt"
+          />
           <div className="range-labels"><span>20m</span><span>200m</span></div>
+          <button
+            className="button button-primary full-button"
+            onClick={saveRadius}
+            disabled={settingsLoading || settingsSaving || draftRadiusM === radiusM}
+          >
+            {settingsLoading ? 'Đang tải cấu hình…' : settingsSaving ? 'Đang lưu…' : 'Lưu bán kính'}
+          </button>
         </div>
       </div>
       <div className="panel gps-help-panel">

@@ -22,6 +22,10 @@ class LocationSync(BaseModel):
     radius_m: float = Field(default=30, gt=0, le=1000)
 
 
+class GeofenceSettings(BaseModel):
+    radius_m: int = Field(ge=20, le=200)
+
+
 class ListenerSession(BaseModel):
     session_id: UUID
     site_code: str = Field(min_length=2, max_length=80, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -77,6 +81,22 @@ async def get_recent_activity(
     _: None = Depends(require_admin_api),
 ):
     return await get_gateway_service(request).get_recent_activity()
+
+
+@router.get("/geofence-settings")
+async def get_geofence_settings(request: Request):
+    return await get_gateway_service(request).get_geofence_settings()
+
+
+@router.put("/geofence-settings")
+async def update_geofence_settings(
+    settings: GeofenceSettings,
+    request: Request,
+    _: None = Depends(require_admin_api),
+):
+    return await get_gateway_service(request).update_geofence_settings(
+        settings.radius_m
+    )
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)

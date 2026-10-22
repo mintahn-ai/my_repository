@@ -158,6 +158,26 @@ export async function fetchRecentActivity() {
   return records;
 }
 
+export async function fetchGeofenceSettings() {
+  const settings = await requestSite('/api/sites/geofence-settings');
+  if (!Number.isInteger(settings?.radius_m) || settings.radius_m < 20 || settings.radius_m > 200) {
+    throw new Error('Backend trả về bán kính geofence không hợp lệ.');
+  }
+  return settings;
+}
+
+export async function updateGeofenceSettings(radiusM) {
+  const settings = await requestSite('/api/sites/geofence-settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ radius_m: radiusM }),
+  }, true);
+  if (!Number.isInteger(settings?.radius_m) || settings.radius_m !== radiusM) {
+    throw new Error('Backend không xác nhận bán kính geofence vừa lưu.');
+  }
+  return settings;
+}
+
 function toSitePayload(site) {
   return {
     name: site.name.trim(),

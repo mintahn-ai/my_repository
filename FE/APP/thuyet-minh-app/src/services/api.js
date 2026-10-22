@@ -76,6 +76,29 @@ export function fetchSites(language) {
   return requestSites(`/api/sites/?${params.toString()}`);
 }
 
+export async function fetchGeofenceSettings() {
+  let response;
+  try {
+    response = await fetch(`${apiBaseUrl}/api/sites/geofence-settings`);
+  } catch {
+    throw new Error(`Không kết nối được BE tại ${apiBaseUrl}. Hãy bật backend và kiểm tra địa chỉ API.`);
+  }
+  if (!response.ok) {
+    let detail = '';
+    try {
+      detail = (await response.json()).detail || '';
+    } catch {
+      detail = '';
+    }
+    throw new Error(detail || `BE phản hồi lỗi (${response.status}).`);
+  }
+  const settings = await response.json();
+  if (!Number.isInteger(settings?.radius_m) || settings.radius_m < 20 || settings.radius_m > 200) {
+    throw new Error('Cấu hình bán kính geofence từ BE không hợp lệ.');
+  }
+  return settings;
+}
+
 export function fetchNearbySites({ latitude, longitude, radius = 500, language }) {
   const params = new URLSearchParams({
     lat: String(latitude),

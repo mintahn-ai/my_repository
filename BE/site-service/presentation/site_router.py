@@ -42,8 +42,29 @@ class LocationSync(BaseModel):
     radius_m: float = Field(default=30, gt=0, le=1000)
 
 
+class GeofenceSettings(BaseModel):
+    radius_m: int = Field(ge=20, le=200)
+
+
 def get_site_service(request: Request) -> SiteService:
     return request.app.state.site_service
+
+
+@router.get("/geofence-settings")
+async def get_geofence_settings(request: Request):
+    radius_m = await request.app.state.geofence_settings_repository.get_radius()
+    return {"radius_m": radius_m}
+
+
+@router.put("/geofence-settings")
+async def update_geofence_settings(
+    settings: GeofenceSettings,
+    request: Request,
+):
+    radius_m = await request.app.state.geofence_settings_repository.set_radius(
+        settings.radius_m
+    )
+    return {"radius_m": radius_m}
 
 
 @router.get("/")

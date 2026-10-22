@@ -18,6 +18,12 @@ class GatewayService:
     async def get_recent_activity(self) -> list[dict]:
         return await self.site_client.get_recent_activity()
 
+    async def get_geofence_settings(self) -> dict:
+        return await self.site_client.get_geofence_settings()
+
+    async def update_geofence_settings(self, radius_m: int) -> dict:
+        return await self.site_client.update_geofence_settings(radius_m)
+
     async def create_site(self, site_data: dict) -> dict:
         return await self.site_client.create_site(site_data)
 

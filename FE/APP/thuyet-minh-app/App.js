@@ -16,7 +16,7 @@ import {
   RotateCw, Search, Settings, Share2, SlidersHorizontal, Sparkles, X,
 } from 'lucide-react-native';
 import { languages, sites } from './src/data/heritage.js';
-import { adaptSiteRecords, apiBaseUrl, fetchNearbySites, fetchSiteNarration, fetchSites, syncLocation } from './src/services/api.js';
+import { adaptSiteRecords, apiBaseUrl, fetchGeofenceSettings, fetchNearbySites, fetchSiteNarration, fetchSites, syncLocation } from './src/services/api.js';
 
 const accent = '#F04D2E';
 const ink = '#22201F';
@@ -53,6 +53,7 @@ export default function App() {
   const lastGpsCheckAt = useRef(0);
   const lastTriggeredSite = useRef(null);
   const lastGpsErrorAt = useRef(0);
+  const geofenceRadiusM = useRef(50);
   const [apiLoading, setApiLoading] = useState(true);
   const [apiError, setApiError] = useState('');
   const [permission, requestPermission] = useCameraPermissions();
@@ -150,7 +151,7 @@ export default function App() {
         const result = await syncLocation({
           latitude: coords.latitude,
           longitude: coords.longitude,
-          radius: 50,
+          radius: geofenceRadiusM.current,
           language: language.code,
         });
         lastGpsErrorAt.current = 0;
@@ -189,6 +190,9 @@ export default function App() {
     };
 
     const startWatching = async () => {
+      const settings = await fetchGeofenceSettings();
+      if (!active) return;
+      geofenceRadiusM.current = settings.radius_m;
       if (Platform.OS === 'web') {
         if (!navigator.geolocation) {
           handleLocationError(new Error('Trình duyệt không hỗ trợ GPS.'));
@@ -739,7 +743,7 @@ function ProfileScreen({ language, autoPlay, savedCount, setAutoPlay, onLanguage
     <Text style={styles.profileGroupLabel}>TRẢI NGHIỆM</Text>
     <View style={styles.settingsGroup}>
       <ProfileRow icon={Languages} title="Ngôn ngữ thuyết minh" subtitle={language.name} onPress={onLanguage} />
-      <View style={styles.profileSettingRow}><View style={styles.profileRowIcon}><Headphones size={17} color="#4C9C7E" /></View><View style={styles.profileRowCopy}><Text style={styles.profileRowTitle}>Tự động phát gần di tích</Text><Text style={styles.profileRowSub}>Dùng GPS khi mở ứng dụng để tự phát trong bán kính 50 m</Text></View><Switch value={autoPlay} onValueChange={setAutoPlay} trackColor={{ false: '#ddd8d2', true: '#F04D2E' }} thumbColor="#fff" /></View>
+      <View style={styles.profileSettingRow}><View style={styles.profileRowIcon}><Headphones size={17} color="#4C9C7E" /></View><View style={styles.profileRowCopy}><Text style={styles.profileRowTitle}>Tự động phát gần di tích</Text><Text style={styles.profileRowSub}>Dùng GPS khi mở ứng dụng theo bán kính do quản trị viên cài đặt</Text></View><Switch value={autoPlay} onValueChange={setAutoPlay} trackColor={{ false: '#ddd8d2', true: '#F04D2E' }} thumbColor="#fff" /></View>
       <ProfileRow icon={QrCode} title="Quét mã QR" subtitle="Nghe thuyết minh tại chỗ" onPress={onScan} last />
     </View>
     <Text style={styles.profileGroupLabel}>THÔNG TIN</Text>

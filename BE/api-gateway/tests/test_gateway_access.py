@@ -15,6 +15,62 @@ from presentation.gateway_router import router
 
 
 class GatewayAccessTests(unittest.TestCase):
+    def test_geofence_settings_are_public_to_read_and_admin_only_to_update(self):
+        saved_radius = []
+        app = FastAPI()
+        app.state.public_listener_only = False
+        app.state.admin_auth_enabled = True
+        app.state.admin_auth_required = True
+        app.state.admin_username = "owner"
+        app.state.admin_password = "private-password"
+        app.state.admin_token_secret = "s" * 40
+        app.state.gateway_service = SimpleNamespace(
+            get_geofence_settings=lambda: asyncio.sleep(
+                0,
+                result={"radius_m": saved_radius[-1] if saved_radius else 50},
+            ),
+            update_geofence_settings=lambda radius: asyncio.sleep(
+                0,
+                result=saved_radius.append(radius) or {"radius_m": radius},
+            ),
+        )
+        app.include_router(router)
+        token, _ = create_admin_token("owner", app.state.admin_token_secret)
+
+        async def send_requests():
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app),
+                base_url="http://test",
+            ) as client:
+                public_read = await client.get("/api/sites/geofence-settings")
+                anonymous_update = await client.put(
+                    "/api/sites/geofence-settings",
+                    json={"radius_m": 80},
+                )
+                authenticated_update = await client.put(
+                    "/api/sites/geofence-settings",
+                    headers={"Authorization": f"Bearer {token}"},
+                    json={"radius_m": 80},
+                )
+                invalid_update = await client.put(
+                    "/api/sites/geofence-settings",
+                    headers={"Authorization": f"Bearer {token}"},
+                    json={"radius_m": 201},
+                )
+                return public_read, anonymous_update, authenticated_update, invalid_update
+
+        public_read, anonymous_update, authenticated_update, invalid_update = asyncio.run(
+            send_requests()
+        )
+
+        self.assertEqual(public_read.status_code, 200)
+        self.assertEqual(public_read.json(), {"radius_m": 50})
+        self.assertEqual(anonymous_update.status_code, 401)
+        self.assertEqual(authenticated_update.status_code, 200)
+        self.assertEqual(authenticated_update.json(), {"radius_m": 80})
+        self.assertEqual(invalid_update.status_code, 422)
+        self.assertEqual(saved_radius, [80])
+
     def test_admin_password_hash_is_salted_and_verifiable(self):
         first_hash = hash_admin_password("a-long-private-password")
         second_hash = hash_admin_password("a-long-private-password")

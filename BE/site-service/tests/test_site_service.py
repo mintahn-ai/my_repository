@@ -2,6 +2,10 @@ import asyncio
 import unittest
 
 from business.site_service import SiteService
+from data.geofence_settings_repository import (
+    DEFAULT_GEOFENCE_RADIUS_M,
+    GeofenceSettingsRepository,
+)
 from data.site_repository import SiteRepository
 
 
@@ -98,7 +102,33 @@ class FakeCollection:
         return FakeCursor(self.documents)
 
 
+class FakeSettingsCollection:
+    def __init__(self, settings=None):
+        self.settings = settings
+
+    async def find_one(self, query):
+        return self.settings
+
+    async def update_one(self, query, update, upsert=False):
+        self.settings = {"_id": query["_id"], **update["$set"]}
+
+
 class SiteServiceTests(unittest.TestCase):
+    def test_geofence_settings_are_read_saved_and_defaulted(self):
+        collection = FakeSettingsCollection()
+        repository = GeofenceSettingsRepository(collection)
+
+        async def run_test():
+            initial = await repository.get_radius()
+            saved = await repository.set_radius(100)
+            loaded = await repository.get_radius()
+            return initial, saved, loaded
+
+        self.assertEqual(
+            asyncio.run(run_test()),
+            (DEFAULT_GEOFENCE_RADIUS_M, 100, 100),
+        )
+
     def test_create_and_update_sites_store_geojson_coordinates(self):
         activity_repository = FakeActivityRepository()
         service = SiteService(

@@ -79,6 +79,7 @@ FE chỉ cấu hình base URL của gateway, ví dụ `http://localhost:8000`. K
 - `DELETE /api/sites/{site_code}` — xóa vĩnh viễn một di tích theo mã.
 - `GET /api/sites/nearby?lat=10.78&lng=106.70&radius_m=500&lang=vi` — di tích đang hoạt động trong bán kính, đơn vị mét.
 - `POST /api/sites/sync-location` — body `{ "lat": 10.78, "lng": 106.70, "lang": "vi", "radius_m": 30 }`; trả `in_zone`, di tích và URL audio nếu ở trong geofence.
+- `GET /api/sites/geofence-settings` — đọc bán kính kích hoạt hiện tại; `PUT` route này (admin bearer token) lưu `radius_m` từ 20 đến 200 mét. Cấu hình được dùng chung cho dashboard và app di động.
 - `GET /api/sites/{site_code}/narration?lang=en` — lấy bản dịch/audio cho một điểm khi mở thuyết minh.
 - `GET /api/sites/listeners/active` — số phiên nghe còn hoạt động và số phiên theo từng di tích.
 - `POST /api/sites/listeners/heartbeat` — body `{ "session_id": "<UUID>", "site_code": "dinh-doc-lap" }`; tạo/cập nhật phiên nghe.
