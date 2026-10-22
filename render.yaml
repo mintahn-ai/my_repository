@@ -37,9 +37,6 @@ services:
     staticPublishPath: dist
     envVars:
       - key: VITE_API_URL
-        fromService:
-          type: web
-          name: ditichq1-api
-          property: host
+        value: https://ditichq1-api.onrender.com
       - key: VITE_ADMIN_AUTH_REQUIRED
         value: "true"
