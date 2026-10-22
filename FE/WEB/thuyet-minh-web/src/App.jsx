@@ -18,6 +18,7 @@ import {
   heartbeatListener,
   leaveListener,
   apiBaseUrl,
+  loginAdmin,
   updateSite,
 } from './services/api.js';
 
@@ -65,6 +66,8 @@ const defaultAdminAccount = {
   username: 'admin',
   password: '1234',
 };
+const adminAuthRequired = import.meta.env.VITE_ADMIN_AUTH_REQUIRED === 'true';
+const adminTokenStorageKey = 'ditichq1-admin-token';
 
 function readAdminAccount() {
   const storedAccount = localStorage.getItem(adminAccountStorageKey);
@@ -89,12 +92,32 @@ function App() {
 }
 
 function AdminApp() {
-  const [account, setAccount] = useState(readAdminAccount);
+  const [account, setAccount] = useState(() => adminAuthRequired
+    ? { displayName: 'Admin Q1', username: '' }
+    : readAdminAccount());
   const [isAuthenticated, setIsAuthenticated] = useState(
-    () => sessionStorage.getItem('ditichq1-admin-authenticated') === 'true',
+    () => adminAuthRequired
+      ? Boolean(sessionStorage.getItem(adminTokenStorageKey))
+      : sessionStorage.getItem('ditichq1-admin-authenticated') === 'true',
   );
 
-  const login = (username, password) => {
+  useEffect(() => {
+    const handleExpiredSession = () => {
+      setIsAuthenticated(false);
+      setAccount({ displayName: 'Admin Q1', username: '' });
+    };
+    window.addEventListener('ditichq1-admin-auth-expired', handleExpiredSession);
+    return () => window.removeEventListener('ditichq1-admin-auth-expired', handleExpiredSession);
+  }, []);
+
+  const login = async (username, password) => {
+    if (adminAuthRequired) {
+      const session = await loginAdmin(username, password);
+      sessionStorage.setItem(adminTokenStorageKey, session.access_token);
+      setAccount({ displayName: session.username, username: session.username });
+      setIsAuthenticated(true);
+      return true;
+    }
     if (username.trim() !== account.username || password !== account.password) return false;
     sessionStorage.setItem('ditichq1-admin-authenticated', 'true');
     setIsAuthenticated(true);
@@ -115,12 +138,14 @@ function AdminApp() {
   };
 
   const logout = () => {
+    sessionStorage.removeItem(adminTokenStorageKey);
     sessionStorage.removeItem('ditichq1-admin-authenticated');
     setIsAuthenticated(false);
+    if (adminAuthRequired) setAccount({ displayName: 'Admin Q1', username: '' });
   };
 
   return isAuthenticated
-    ? <AdminDashboard account={account} onAccountUpdate={updateAccount} onLogout={logout} />
+    ? <AdminDashboard account={account} onAccountUpdate={updateAccount} onLogout={logout} authRequired={adminAuthRequired} />
     : <AdminLogin onLogin={login} />;
 }
 
@@ -128,14 +153,22 @@ function AdminLogin({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault();
-    if (!onLogin(username, password)) {
-      setError('Tên đăng nhập hoặc mật khẩu không đúng.');
-      return;
+    setSubmitting(true);
+    try {
+      if (!await onLogin(username, password)) {
+        setError('Tên đăng nhập hoặc mật khẩu không đúng.');
+        return;
+      }
+      setError('');
+    } catch (loginError) {
+      setError(loginError.message || 'Không thể đăng nhập. Kiểm tra kết nối Backend.');
+    } finally {
+      setSubmitting(false);
     }
-    setError('');
   };
 
   return (
@@ -168,13 +201,13 @@ function AdminLogin({ onLogin }) {
           />
         </label>
         {error && <div className="login-error" role="alert">{error}</div>}
-        <button className="button button-primary login-submit" type="submit">Đăng nhập</button>
+        <button className="button button-primary login-submit" type="submit" disabled={submitting}>{submitting ? 'Đang xác thực…' : 'Đăng nhập'}</button>
       </form>
     </main>
   );
 }
 
-function AdminDashboard({ account, onAccountUpdate, onLogout }) {
+function AdminDashboard({ account, onAccountUpdate, onLogout, authRequired }) {
   const [activePage, setActivePage] = useState('dashboard');
   const [sites, setSites] = useState(initialSites);
   const [search, setSearch] = useState('');
@@ -343,7 +376,7 @@ function AdminDashboard({ account, onAccountUpdate, onLogout }) {
           {activePage === 'narrations' && <NarrationsPage notify={notify} />}
           {activePage === 'languages' && <LanguagesPage sites={sites} />}
           {activePage === 'map' && <MapPage notify={notify} siteCount={sites.length} />}
-          {activePage === 'settings' && <SettingsPage account={account} onAccountUpdate={onAccountUpdate} notify={notify} />}
+          {activePage === 'settings' && <SettingsPage account={account} onAccountUpdate={onAccountUpdate} notify={notify} authRequired={authRequired} />}
         </div>
         <footer className="footer"><span>© 2026 Di Tích Q1</span><span>Hệ thống thuyết minh di tích lịch sử Quận 1</span><span className="system-status"><i /> {backendStatus === 'connected' ? 'Đã kết nối Backend' : backendStatus === 'offline' ? 'Đang dùng dữ liệu mẫu · Backend chưa kết nối' : 'Đang kết nối Backend…'}</span></footer>
       </main>
@@ -933,13 +966,29 @@ function MapPage({ notify, siteCount }) {
   return <div className="map-page"><section className="panel map-large-panel"><div className="panel-heading"><div><h3>Vị trí các điểm di tích</h3><p>Quận 1, Thành phố Hồ Chí Minh · {siteCount} điểm mẫu</p></div><button className="button button-secondary small-button" onClick={() => notify('Đang làm mới vị trí GPS.')}><Compass size={15} /> Làm mới vị trí</button></div><div className="large-map map-preview"><div className="map-block block-a" /><div className="map-block block-b" /><div className="map-block block-c" /><div className="map-block block-d" /><div className="map-block block-e" /><div className="map-road road-one" /><div className="map-road road-two" /><div className="map-road road-three" /><div className="map-water" /><span className="map-label label-dong-khoi">Đ. Đồng Khởi</span><span className="map-label label-le-loi">Đ. Lê Lợi</span><span className="map-label label-nam-ky">Nam Kỳ Khởi Nghĩa</span><div className="map-marker marker-one"><MapPin size={16} fill="currentColor" /></div><div className="map-marker marker-two"><MapPin size={16} fill="currentColor" /></div><div className="map-marker marker-three"><MapPin size={16} fill="currentColor" /></div><div className="map-marker marker-four"><MapPin size={16} fill="currentColor" /></div><div className="map-legend"><i /> Đang hoạt động <i className="legend-warn" /> Bản nháp</div><button className="map-zoom" onClick={() => notify('Bản đồ đã được phóng to.')}><Plus size={17} /><span />−</button></div></section><section className="gps-side"><div className="panel gps-status-panel"><div className="gps-status-head"><span className="gps-icon"><ShieldCheck size={19} /></span><span className="gps-online"><i /> HOẠT ĐỘNG</span></div><h3>GPS & Geofence</h3><p>Thiết lập bán kính để ứng dụng tự động phát thuyết minh khi khách đến gần di tích.</p><div className="radius-setting"><div><span>Bán kính kích hoạt</span><strong>50 <small>mét</small></strong></div><input type="range" min="20" max="200" defaultValue="50" /><div className="range-labels"><span>20m</span><span>200m</span></div></div><button className="button button-primary full-button" onClick={() => notify('Đã lưu cấu hình GPS.')}>Lưu cấu hình</button></div><div className="panel gps-help-panel"><div className="gps-help-icon"><CircleHelp size={17} /></div><div><strong>Về vùng kích hoạt</strong><p>Bán kính đề xuất từ 30–80m để đảm bảo trải nghiệm phát tự động chính xác trong khu vực trung tâm.</p></div></div></section></div>;
 }
 
-function SettingsPage({ account, onAccountUpdate, notify }) {
+function SettingsPage({ account, onAccountUpdate, notify, authRequired }) {
   const [displayName, setDisplayName] = useState(account.displayName);
   const [username, setUsername] = useState(account.username);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+
+  if (authRequired) {
+    return (
+      <section className="panel settings-panel">
+        <div className="panel-heading">
+          <div><h3>Thông tin tài khoản</h3><p>Tài khoản quản trị được xác thực an toàn ở Backend.</p></div>
+        </div>
+        <div className="settings-form">
+          <label>Tên đăng nhập
+            <input value={account.username} readOnly />
+          </label>
+          <p className="settings-security-note">Để đổi thông tin đăng nhập, hãy cập nhật biến môi trường ADMIN_USERNAME hoặc ADMIN_PASSWORD trong Render. Mật khẩu không được lưu trong trình duyệt.</p>
+        </div>
+      </section>
+    );
+  }
 
   const saveAccount = (event) => {
     event.preventDefault();

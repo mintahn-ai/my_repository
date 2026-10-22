@@ -1,0 +1,23 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+COPY api-gateway/requirements.txt /tmp/api-gateway-requirements.txt
+COPY site-service/requirements.txt /tmp/site-service-requirements.txt
+COPY translation-service/requirements.txt /tmp/translation-service-requirements.txt
+RUN pip install --no-cache-dir \
+    -r /tmp/api-gateway-requirements.txt \
+    -r /tmp/site-service-requirements.txt \
+    -r /tmp/translation-service-requirements.txt
+
+COPY api-gateway ./api-gateway
+COPY site-service ./site-service
+COPY translation-service ./translation-service
+COPY run_hosted.py .
+
+ENV AUDIO_DIR=/tmp/ditichq1-audio
+RUN mkdir -p /tmp/ditichq1-audio
+
+EXPOSE 10000
+
+CMD ["python", "run_hosted.py"]

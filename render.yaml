@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: ditichq1-api
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: project-source
+    dockerfilePath: ./BE/Dockerfile.render
+    dockerContext: ./BE
+    healthCheckPath: /health
+    envVars:
+      - key: MONGO_URL
+        sync: false
+      - key: SITE_DATABASE
+        value: district1_sites
+      - key: TRANSLATION_DATABASE
+        value: district1_translations
+      - key: SEED_SAMPLE_SITES
+        value: "true"
+      - key: ADMIN_AUTH_REQUIRED
+        value: "true"
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ADMIN_TOKEN_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://ditichq1-web.onrender.com,http://localhost:5173,http://127.0.0.1:5173
+
+  - type: web
+    name: ditichq1-web
+    runtime: static
+    branch: project-source
+    rootDir: FE/WEB/thuyet-minh-web
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: ditichq1-api
+          property: host
+      - key: VITE_ADMIN_AUTH_REQUIRED
+        value: "true"

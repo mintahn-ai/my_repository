@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+.git
+**/__pycache__
+**/.pytest_cache
+**/.venv
+**/static/audio
+**/storage/audio
+**/node_modules
+**/*.mp3
+**/*.log

@@ -1,10 +1,11 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Query, Request, status
+from fastapi import APIRouter, Body, Depends, Query, Request, status
 from pydantic import BaseModel, Field, StringConstraints
 
 from business.gateway_service import GatewayService
+from presentation.admin_auth import require_admin_api
 
 router = APIRouter(prefix="/api/sites", tags=["Sites"])
 Language = Annotated[str, Query(pattern=r"^(vi|en|ja|zh-CN)$")]
@@ -63,22 +64,37 @@ async def get_sites(
 
 
 @router.get("/admin")
-async def get_admin_sites(request: Request):
+async def get_admin_sites(
+    request: Request,
+    _: None = Depends(require_admin_api),
+):
     return await get_gateway_service(request).get_admin_sites()
 
 
 @router.get("/activity")
-async def get_recent_activity(request: Request):
+async def get_recent_activity(
+    request: Request,
+    _: None = Depends(require_admin_api),
+):
     return await get_gateway_service(request).get_recent_activity()
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
-async def create_site(site: SiteCreate, request: Request):
+async def create_site(
+    site: SiteCreate,
+    request: Request,
+    _: None = Depends(require_admin_api),
+):
     return await get_gateway_service(request).create_site(site.model_dump())
 
 
 @router.put("/{site_code}")
-async def update_site(site_code: SiteCode, site: SiteUpdate, request: Request):
+async def update_site(
+    site_code: SiteCode,
+    site: SiteUpdate,
+    request: Request,
+    _: None = Depends(require_admin_api),
+):
     return await get_gateway_service(request).update_site(
         site_code,
         site.model_dump(),
@@ -86,7 +102,11 @@ async def update_site(site_code: SiteCode, site: SiteUpdate, request: Request):
 
 
 @router.delete("/{site_code}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_site(site_code: SiteCode, request: Request):
+async def delete_site(
+    site_code: SiteCode,
+    request: Request,
+    _: None = Depends(require_admin_api),
+):
     await get_gateway_service(request).delete_site(site_code)
 
 
@@ -131,7 +151,10 @@ async def sync_location(
 
 
 @router.get("/listeners/active", tags=["Listeners"])
-async def get_active_listeners(request: Request):
+async def get_active_listeners(
+    request: Request,
+    _: None = Depends(require_admin_api),
+):
     return await get_gateway_service(request).get_active_listeners()
 
 

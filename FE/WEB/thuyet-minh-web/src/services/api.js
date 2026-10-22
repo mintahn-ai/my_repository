@@ -1,6 +1,53 @@
 const defaultApiUrl = `${window.location.protocol}//${window.location.hostname}:8000`;
 const defaultApiBaseUrl = import.meta.env.DEV ? '' : defaultApiUrl;
-export const apiBaseUrl = (import.meta.env.VITE_API_URL ?? defaultApiBaseUrl).replace(/\/+$/, '');
+const configuredApiUrl = import.meta.env.VITE_API_URL ?? defaultApiBaseUrl;
+export const apiBaseUrl = (configuredApiUrl && !/^https?:\/\//i.test(configuredApiUrl)
+  ? `https://${configuredApiUrl}`
+  : configuredApiUrl).replace(/\/+$/, '');
+
+const adminTokenStorageKey = 'ditichq1-admin-token';
+
+function withAdminToken(options = {}) {
+  const token = sessionStorage.getItem(adminTokenStorageKey);
+  if (!token) return options;
+  return {
+    ...options,
+    headers: {
+      ...options.headers,
+      Authorization: `Bearer ${token}`,
+    },
+  };
+}
+
+async function handleExpiredAdminSession(response) {
+  if (response.status === 401 && sessionStorage.getItem(adminTokenStorageKey)) {
+    sessionStorage.removeItem(adminTokenStorageKey);
+    window.dispatchEvent(new Event('ditichq1-admin-auth-expired'));
+  }
+}
+
+export async function loginAdmin(username, password) {
+  const response = await fetch(`${apiBaseUrl}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!response.ok) {
+    let message = `Đăng nhập thất bại (${response.status}).`;
+    try {
+      const body = await response.json();
+      if (typeof body.detail === 'string') message = body.detail;
+    } catch {
+      // Keep the HTTP status message when the response is not JSON.
+    }
+    throw new Error(message);
+  }
+  const session = await response.json();
+  if (typeof session.access_token !== 'string' || !session.access_token) {
+    throw new Error('Backend trả về phiên đăng nhập không hợp lệ.');
+  }
+  return session;
+}
 
 export async function fetchSites() {
   let response;
@@ -38,13 +85,17 @@ export async function fetchSites() {
   }));
 }
 
-async function requestSite(path, options = {}) {
+async function requestSite(path, options = {}, requiresAdmin = false) {
   let response;
   try {
-    response = await fetch(`${apiBaseUrl}${path}`, options);
+    response = await fetch(
+      `${apiBaseUrl}${path}`,
+      requiresAdmin ? withAdminToken(options) : options,
+    );
   } catch {
     throw new Error(`Không kết nối được Backend tại ${apiBaseUrl || 'địa chỉ proxy hiện tại'}.`);
   }
+  if (requiresAdmin) await handleExpiredAdminSession(response);
   if (!response.ok) {
     let detail = `Backend phản hồi lỗi (${response.status}).`;
     try {
@@ -59,7 +110,7 @@ async function requestSite(path, options = {}) {
 }
 
 export async function fetchAdminSites() {
-  const records = await requestSite('/api/sites/admin');
+  const records = await requestSite('/api/sites/admin', {}, true);
   if (!Array.isArray(records)) {
     throw new Error('Backend trả về danh sách di tích không hợp lệ.');
   }
@@ -83,7 +134,7 @@ export async function fetchAdminSites() {
 }
 
 export async function fetchRecentActivity() {
-  const records = await requestSite('/api/sites/activity');
+  const records = await requestSite('/api/sites/activity', {}, true);
   if (!Array.isArray(records)) {
     throw new Error('Backend trả về lịch sử hoạt động không hợp lệ.');
   }
@@ -109,7 +160,7 @@ export async function createSite(site) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-  });
+  }, true);
 }
 
 export async function updateSite(code, site) {
@@ -117,17 +168,21 @@ export async function updateSite(code, site) {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(toSitePayload(site)),
-  });
+  }, true);
 }
 
 export async function deleteSite(code) {
   return requestSite(`/api/sites/${encodeURIComponent(code)}`, {
     method: 'DELETE',
-  });
+  }, true);
 }
 
 export async function fetchActiveListeners() {
-  const response = await fetch(`${apiBaseUrl}/api/sites/listeners/active`);
+  const response = await fetch(
+    `${apiBaseUrl}/api/sites/listeners/active`,
+    withAdminToken(),
+  );
+  await handleExpiredAdminSession(response);
   if (!response.ok) {
     throw new Error(`Không tải được số thiết bị đang nghe (${response.status}).`);
   }

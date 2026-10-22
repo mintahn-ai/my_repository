@@ -14,6 +14,7 @@ from data.site_repository import SiteRepository
 from integrations.translation_client import TranslationClient
 from presentation.listener_router import listener_router
 from presentation.site_router import router
+from seed_sites import SITES
 
 
 @asynccontextmanager
@@ -31,6 +32,21 @@ async def lifespan(app: FastAPI):
     await listener_collection.create_index("session_id", unique=True)
     await listener_collection.create_index("last_seen", expireAfterSeconds=60)
     await activity_collection.create_index([("created_at", -1)])
+    if os.getenv("SEED_SAMPLE_SITES", "false").lower() == "true":
+        for site in SITES:
+            document = {
+                **site,
+                "is_active": True,
+                "location": {
+                    "type": "Point",
+                    "coordinates": [site["lng"], site["lat"]],
+                },
+            }
+            await site_collection.update_one(
+                {"code": site["code"]},
+                {"$setOnInsert": document},
+                upsert=True,
+            )
 
     http_client = httpx.AsyncClient(
         timeout=httpx.Timeout(float(os.getenv("TRANSLATION_SERVICE_TIMEOUT", "90")))

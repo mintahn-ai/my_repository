@@ -85,10 +85,12 @@ FE chỉ cấu hình base URL của gateway, ví dụ `http://localhost:8000`. K
 - `POST /api/sites/listeners/leave?session_id=<UUID>` — kết thúc phiên khi người dùng rời trang.
 - `GET /api/audio/files/{filename}` — audio do gateway phục vụ từ volume dùng chung.
 - `GET /api/audio/packs/{lang}` — manifest audio theo ngôn ngữ.
-- `GET /api/audio/files/{filename}` — audio do gateway phục vụ từ volume dùng chung.
+- `POST /api/auth/login` — xác thực tài khoản quản trị và cấp bearer token có thời hạn.
 - `GET /health` — health check gateway.
 
-FE quản trị gọi CRUD qua API Gateway; Site Service là service duy nhất ghi hồ sơ di tích vào MongoDB. Các route quản trị hiện chưa có đăng nhập/phân quyền, vì vậy chỉ nên dùng trong môi trường demo/LAN của đồ án; cần bổ sung xác thực và phân quyền trước khi triển khai công khai.
+Các route admin (`/admin`, `/activity`, CRUD và `/listeners/active`) yêu cầu bearer token khi cấu hình `ADMIN_AUTH_REQUIRED=true`. Gateway xác thực token ký HS256; token có thời hạn 8 giờ và endpoint đăng nhập khóa tạm username sau 10 lần sai trong 15 phút. Đặt `ADMIN_USERNAME`, `ADMIN_PASSWORD` (tối thiểu 12 ký tự) và `ADMIN_TOKEN_SECRET` ở môi trường triển khai, không commit chúng. `ADMIN_TOKEN_SECRET` cần tối thiểu 32 byte. Chế độ local giữ tương thích cũ nếu không bật xác thực; bật `ADMIN_AUTH_REQUIRED=true` để kiểm tra đăng nhập thật tại local.
+
+Có thể đặt `PUBLIC_LISTENER_ONLY=true` để chủ động tắt các route admin; mặc định là `false`. Khi public dashboard có đăng nhập, giữ biến này ở `false` và bắt buộc `ADMIN_AUTH_REQUIRED=true`.
 
 Ngôn ngữ public hiện được giới hạn ở `vi`, `en`, `ja`, `zh-CN`. Engine của nhóm có thêm ngôn ngữ giọng đọc; cần đồng bộ whitelist API trước khi mở các ngôn ngữ đó. App gửi vị trí GPS tới `sync-location` khi người dùng chọn “Tìm quanh đây”; nếu chế độ tự động bật và nằm trong geofence thì chuyển tới trang điểm di tích và phát audio. Đây chưa phải theo dõi vị trí chạy nền liên tục.
 
@@ -123,6 +125,18 @@ docker compose exec site-service python seed_sites.py
 ```
 
 Để chạy web admin, khởi động Backend rồi chạy `npm run dev` trong thư mục web. Vite chuyển tiếp các request `/api` và `/health` tới `http://127.0.0.1:8000`, do đó trình duyệt và điện thoại chỉ cần truy cập cùng host của Vite; không cần cấu hình `VITE_API_URL` hoặc thêm origin của web vào `CORS_ORIGINS` cho luồng dev này. Với demo điện thoại, mở web bằng `npm run dev` (đã bind `0.0.0.0`) rồi truy cập `http://<IPv4-máy-tính>:5173`; điện thoại phải cùng mạng Wi-Fi và firewall cho phép cổng 5173. Với Expo Go, đặt `EXPO_PUBLIC_API_URL=http://<IPv4-máy-tính>:8000`; app native gọi trực tiếp Backend nên cần mạng LAN và cấu hình CORS tương ứng. Restart Expo sau khi đổi biến môi trường. Không cần API key để dịch qua các provider miễn phí; các key AI tùy chọn có thể đặt trong `BE/.env` theo `.env.example`.
+
+## Đưa dashboard lên Render
+
+Repo có Blueprint ở `render.yaml`: một Static Site cho toàn bộ giao diện web và một Docker Web Service miễn phí cho API Gateway, Site Service và Translation Service. Ba tiến trình backend cùng chạy trong một container; site/translation chỉ bind loopback, còn Gateway là cổng public. Audio được chia sẻ trong thư mục tạm của container và có thể được tạo lại sau khi Render khởi động lại. Atlas giữ dữ liệu di tích và bản dịch giữa các lần khởi động.
+
+1. Tạo MongoDB Atlas M0 và database user riêng. Cấp quyền `readWrite` cho `district1_sites` và `district1_translations`, không dùng tài khoản Atlas quản trị.
+2. Vì địa chỉ outbound của Render Free không cố định, Atlas Network Access cần cho phép `0.0.0.0/0`; bảo vệ kết nối bằng database user riêng với mật khẩu mạnh, không dùng mật khẩu Atlas account. Encode ký tự đặc biệt trong mật khẩu khi tạo URI.
+3. Trong Render, chọn **New → Blueprint**, kết nối repo và chọn branch `project-source`. Render đọc `render.yaml`; nhập các biến được yêu cầu, đặc biệt `MONGO_URL`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`. `ADMIN_TOKEN_SECRET` được Render tự tạo. Không gửi hoặc commit các giá trị này.
+4. Chờ cả API và trang web deploy thành công. API sẽ seed 6 di tích mẫu một lần theo từng mã (không ghi đè dữ liệu đã có); trang quản trị nằm ở domain `ditichq1-web` và API dùng domain `ditichq1-api`.
+5. Đăng nhập bằng tài khoản đã đặt khi tạo Blueprint. QR trên dashboard trỏ về domain web công khai; điện thoại có thể mở qua mạng bất kỳ. Gói Free có thể đưa API vào trạng thái ngủ khi không hoạt động; lần truy cập đầu sau đó có thể chậm. File audio cache có thể được tạo lại sau khi khởi động lại.
+
+Nếu Atlas đã có dữ liệu riêng từ MongoDB local, hãy export/import dữ liệu đó trước khi dùng website; chế độ seed mẫu chỉ bổ sung mã mẫu còn thiếu và không tự chuyển dữ liệu từ máy tính.
 
 ## Phạm vi tích hợp hiện tại
 

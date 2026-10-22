@@ -105,25 +105,29 @@ async def main() -> None:
         collection = client[
             os.getenv("SITE_DATABASE", "district1_sites")
         ]["sites"]
-        await collection.create_index("code", unique=True)
-        await collection.create_index([("location", "2dsphere")])
-        for site in SITES:
-            document = {
-                **site,
-                "is_active": True,
-                "location": {
-                    "type": "Point",
-                    "coordinates": [site["lng"], site["lat"]],
-                },
-            }
-            await collection.update_one(
-                {"code": site["code"]},
-                {"$setOnInsert": document},
-                upsert=True,
-            )
+        await seed_sample_sites(collection)
         print(f"Seeded {len(SITES)} sample historic sites (existing records preserved).")
     finally:
         client.close()
+
+
+async def seed_sample_sites(collection) -> None:
+    await collection.create_index("code", unique=True)
+    await collection.create_index([("location", "2dsphere")])
+    for site in SITES:
+        document = {
+            **site,
+            "is_active": True,
+            "location": {
+                "type": "Point",
+                "coordinates": [site["lng"], site["lat"]],
+            },
+        }
+        await collection.update_one(
+            {"code": site["code"]},
+            {"$setOnInsert": document},
+            upsert=True,
+        )
 
 
 if __name__ == "__main__":
