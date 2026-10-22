@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "Di Tích Q1",
+    "slug": "di-tich-q1",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#171616"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Ứng dụng dùng camera để quét mã QR tại di tích.",
+        "NSLocationWhenInUseUsageDescription": "Ứng dụng dùng vị trí để tìm di tích lịch sử gần bạn."
+      }
+    },
+    "android": {
+      "permissions": [
+        "CAMERA",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#171616"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Cho phép Di Tích Q1 sử dụng camera để quét mã QR tại di tích."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Cho phép Di Tích Q1 sử dụng vị trí để tìm di tích gần bạn."
+        }
+      ],
+      "expo-audio"
+    ]
+  }
+}

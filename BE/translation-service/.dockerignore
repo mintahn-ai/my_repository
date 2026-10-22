@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+storage/audio/*.mp3
+static/audio/*.mp3

@@ -1,0 +1,99 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  translation-service:
+    build: ./translation-service
+    restart: unless-stopped
+    environment:
+      MONGO_URL: mongodb://mongo:27017
+      TRANSLATION_DATABASE: district1_translations
+      AUDIO_DIR: /shared/audio
+      TRANSLATION_TIMEOUT: ${TRANSLATION_TIMEOUT:-60}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      MYMEMORY_EMAIL: ${MYMEMORY_EMAIL:-}
+    volumes:
+      - audio_data:/shared/audio
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=3)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  site-service:
+    build: ./site-service
+    restart: unless-stopped
+    environment:
+      MONGO_URL: mongodb://mongo:27017
+      SITE_DATABASE: district1_sites
+      TRANSLATION_SERVICE_URL: http://translation-service:8001
+    depends_on:
+      mongo:
+        condition: service_healthy
+      translation-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  api-gateway:
+    build: ./api-gateway
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      SITE_SERVICE_URL: http://site-service:8000
+      CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:8081}"
+      SITE_SERVICE_TIMEOUT: ${SITE_SERVICE_TIMEOUT:-90}
+      AUDIO_DIR: /shared/audio
+    volumes:
+      - audio_data:/shared/audio:ro
+    depends_on:
+      site-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  mongo_data:
+  audio_data:

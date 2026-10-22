@@ -1,0 +1,29 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Dependencies and generated builds
+**/node_modules/
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+**/.expo/
+**/dist/
+**/web-build/
+**/*.log
+
+# Local databases, generated audio, and archives
+**/storage/audio/
+**/static/audio/*.mp3
+**/audio_data/
+**/mongo_data/
+FE.zip
+/package-lock.json
+
+# Local editor and OS files
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

@@ -1,0 +1,8 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+site-service/storage/audio/
+translation-service/storage/audio/*.mp3
+translation-service/static/audio/*.mp3
