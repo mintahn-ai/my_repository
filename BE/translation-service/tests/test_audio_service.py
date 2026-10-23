@@ -7,6 +7,7 @@ from pathlib import Path
 
 from business.audio_service import AudioService
 from data.audio_asset_repository import AudioAssetRepository
+from data.offline_narration_translations import OFFLINE_NARRATION_TRANSLATIONS
 
 
 class FakeRepository:
@@ -57,6 +58,57 @@ class FakeAssetCollection:
 
 
 class AudioServiceTests(unittest.TestCase):
+    def test_offline_translations_generate_audio_for_matching_site_descriptions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            translator = FakeTranslator()
+
+            async def generate_all_languages():
+                results = {}
+                for lang in ("en", "ja", "zh-CN"):
+                    translator.audio_path = Path(directory) / f"{lang}.mp3"
+                    service = AudioService(
+                        FakeRepository(),
+                        translator,
+                        Path(directory),
+                    )
+                    results[lang] = await service.get_audio(
+                        "dinh-doc-lap",
+                        OFFLINE_NARRATION_TRANSLATIONS["dinh-doc-lap"]["source_text"],
+                        lang,
+                    )
+                return results
+
+            results = asyncio.run(generate_all_languages())
+
+            for lang in ("en", "ja", "zh-CN"):
+                self.assertEqual(
+                    results[lang]["description"],
+                    OFFLINE_NARRATION_TRANSLATIONS["dinh-doc-lap"]["translations"][lang],
+                )
+            self.assertEqual(translator.translation_calls, 0)
+            self.assertEqual(translator.audio_calls, 3)
+
+    def test_offline_translation_is_not_used_for_changed_site_description(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = FakeRepository()
+            translator = FakeTranslator()
+            translator.audio_path = Path(directory) / "en.mp3"
+            service = AudioService(repository, translator, Path(directory))
+
+            result = asyncio.run(
+                service.get_audio(
+                    "dinh-doc-lap",
+                    "A changed description that must be translated dynamically.",
+                    "en",
+                )
+            )
+
+            self.assertEqual(
+                result["description"],
+                "en: A changed description that must be translated dynamically.",
+            )
+            self.assertEqual(translator.translation_calls, 1)
+
     def test_translation_and_audio_are_cached_for_unchanged_source(self):
         with tempfile.TemporaryDirectory() as directory:
             repository = FakeRepository()

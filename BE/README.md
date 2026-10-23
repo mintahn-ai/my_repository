@@ -145,3 +145,5 @@ Nếu Atlas đã có dữ liệu riêng từ MongoDB local, hãy export/import d
 ## Phạm vi tích hợp hiện tại
 
 Đã tích hợp Edge TTS và pipeline dịch/provider từ BE nhóm vào translation-service; nguồn nhóm được giữ nguyên. Đã bổ sung dữ liệu mẫu đồng bộ với FE mobile, endpoint geofence và narration, cùng cấu hình Expo host để điện thoại thật truy cập API host. Chưa kiểm thử end-to-end provider dịch/audio thật; cần Internet và có thể bị giới hạn từ dịch vụ miễn phí.
+
+Translation-service có sẵn bản dịch dự phòng tiếng Anh, Nhật và Trung cho 6 di tích mẫu. Bản dự phòng chỉ được dùng khi mã di tích và nội dung tiếng Việt khớp chính xác; dữ liệu thay đổi hoặc di tích khác vẫn cần bản dịch trong MongoDB hoặc dịch vụ dịch bên ngoài.

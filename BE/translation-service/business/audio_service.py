@@ -6,6 +6,7 @@ from typing import Any
 
 from data.translation_repository import TranslationRepository
 from data.audio_asset_repository import AudioAssetRepository
+from data.offline_narration_translations import OFFLINE_NARRATION_TRANSLATIONS
 from business.tts_engine import TTSService
 
 logger = logging.getLogger(__name__)
@@ -102,24 +103,39 @@ class AudioService:
         if lang == "vi":
             description = source_description
         else:
-            try:
-                description = await asyncio.wait_for(
-                    self.tts_service.translate_text_async(
-                        source_description,
-                        lang,
-                        source_lang="vi",
-                    ),
-                    timeout=self.translation_timeout,
-                )
-            except asyncio.TimeoutError:
-                raise
-            except Exception as exc:
-                logger.exception(
-                    "Translation provider failed for site=%s lang=%s",
+            offline_translation = OFFLINE_NARRATION_TRANSLATIONS.get(site_code)
+            offline_description = (
+                offline_translation["translations"].get(lang)
+                if offline_translation
+                and offline_translation["source_text"] == source_description
+                else None
+            )
+            if offline_description:
+                description = offline_description
+                logger.info(
+                    "Using offline narration translation for site=%s lang=%s",
                     site_code,
                     lang,
                 )
-                raise AudioProcessingError("Translation provider failed.") from exc
+            else:
+                try:
+                    description = await asyncio.wait_for(
+                        self.tts_service.translate_text_async(
+                            source_description,
+                            lang,
+                            source_lang="vi",
+                        ),
+                        timeout=self.translation_timeout,
+                    )
+                except asyncio.TimeoutError:
+                    raise
+                except Exception as exc:
+                    logger.exception(
+                        "Translation provider failed for site=%s lang=%s",
+                        site_code,
+                        lang,
+                    )
+                    raise AudioProcessingError("Translation provider failed.") from exc
         if not isinstance(description, str) or not description.strip():
             raise RuntimeError("Translation provider returned empty text.")
         description = description.strip()
